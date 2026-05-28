@@ -234,19 +234,12 @@ let () =
   assert (Before == Obj.magic false);
   assert (After == Obj.magic true)
 
-let[@inline] is_determined_after (status : [< `Before | `After ] tdt) : bool =
-  (* This is the identity function.  For some reason the OCaml 5.0 compiler is
-     not able to optimize
-
-     {[
-       match status with
-       | Before -> false
-       | After -> true
-     ]}
-
-     to the identity function.  It should be possible and the compiler can do
-     that in many cases. *)
-  Obj.magic status
+let[@inline] is_determined_after (status : [< `Before | `After ] tdt) =
+  match status with
+  | Before ->
+      false
+  | After ->
+      true
 
 type not_float = which
 

@@ -167,7 +167,7 @@ and _ tdt =
               This field must be first, see [root_as_atomic] and
               [tree_as_ref]. *)
       timeout : [ `Set | `Unset ] Timeout.t;
-      mutable mode : Mode.t;
+      mode : Mode.t;
       mutable validate_counter : int;
       mutable post_commit : Action.t;
     }

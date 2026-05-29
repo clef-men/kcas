@@ -3,21 +3,6 @@
  * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
  *)
 
-(* NOTE: You can adjust comment blocks below to select whether or not to use
-   fenceless operations where it is safe to do so.  Fenceless operations have
-   been seen to provide significant performance improvements on ARM (Apple
-   M1). *)
-
-(**)
-external fenceless_get : 'a Atomic.t -> 'a = "%field0"
-
-let[@inline] fenceless_get x =
-  fenceless_get ((* Prevents CSE *) Sys.opaque_identity x)
-(**)
-(*
-let fenceless_get = Atomic.get
-*)
-
 module Timeout = struct
   exception Timeout
 
@@ -32,15 +17,11 @@ module Timeout = struct
   external as_atomic : [< `Set ] t -> [< `Elapsed | `Call ] t Atomic.t
     = "%identity"
 
-  (* Fenceless operations are safe here as the timeout state is not not visible
-     outside of the library and we don't always need the latest value and, when
-     we do, there is a fence after. *)
-
   let[@inline] check (t : [< `Set | `Unset ] t) =
     match t with
     | Unset -> ()
     | Set set_r ->
-        if fenceless_get (as_atomic (Set set_r)) == Elapsed then timeout ()
+        if Atomic.get (as_atomic (Set set_r)) == Elapsed then timeout ()
 
   let set seconds (state : [< `Elapsed | `Call ] t Atomic.t) =
     Domain_local_timeout.set_timeoutf seconds @@ fun () ->
@@ -62,7 +43,7 @@ module Timeout = struct
     | Some seconds -> alloc seconds
 
   let[@inline never] await (state : [< `Elapsed | `Call ] t Atomic.t) release =
-    match fenceless_get state with
+    match Atomic.get state with
     | Call cancel as alive ->
         if Atomic.compare_and_set state alive (Call release) then Call cancel
         else timeout ()
@@ -72,7 +53,7 @@ module Timeout = struct
     match t with Unset -> Unset | Set r -> await (as_atomic (Set r)) release
 
   let[@inline never] unawait (state : [< `Elapsed | `Call ] t Atomic.t) alive =
-    match fenceless_get state with
+    match Atomic.get state with
     | Call _ as await ->
         if not (Atomic.compare_and_set state await alive) then timeout ()
     | Elapsed -> timeout ()
@@ -89,7 +70,7 @@ module Timeout = struct
     match t with
     | Unset -> ()
     | Set set_r -> (
-        match fenceless_get (as_atomic (Set set_r)) with
+        match Atomic.get (as_atomic (Set set_r)) with
         | Elapsed -> ()
         | Call cancel -> cancel ())
 end
@@ -259,7 +240,7 @@ let[@inline] clear_other (state : 'a state) status =
 
 let[@inline] is_determined = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin
-      match fenceless_get (root_as_atomic xt) with
+      match Atomic.get (root_as_atomic xt) with
       | R (Node _) -> false
       | R After | R Before -> true
     end
@@ -285,10 +266,9 @@ let[@inline] rec verify_rec which = function
 and verify which (Node node_r : [< `Node ] tdt) =
   let status = verify_rec which node_r.lt in
   if status == After then
-    (* Fenceless is safe as [finish] has a fence after. *)
     if
       is_cmp which node_r.state
-      && fenceless_get (as_atomic node_r.loc) != node_r.state
+      && Atomic.get (as_atomic node_r.loc) != node_r.state
     then Before
     else verify_rec which node_r.gt
   else status
@@ -297,8 +277,7 @@ let finish which root status =
   if Atomic.compare_and_set (root_as_atomic which) (R root) (R status) then
     release which status root
   else
-    (* Fenceless is safe as we have a fence above. *)
-    fenceless_get (root_as_atomic which) == R After
+    Atomic.get (root_as_atomic which) == R After
 
 let a_cmp = 1
 let a_cas = 2
@@ -357,8 +336,7 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
 
 and is_undetermined_after = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin
-      (* Fenceless at most gives old root and causes extra work. *)
-      match fenceless_get (root_as_atomic xt) with
+      match Atomic.get (root_as_atomic xt) with
       | R (Node node_r) -> begin
           let root = Node node_r in
           match determine xt 0 root with
@@ -368,8 +346,7 @@ and is_undetermined_after = function
                  else if 0 <= status then After
                  else Before)
           | exception Exit ->
-              (* Fenceless is safe as there was a fence before. *)
-              fenceless_get (root_as_atomic xt) == R After
+              Atomic.get (root_as_atomic xt) == R After
         end
       | R Before -> false
       | R After -> true
@@ -428,8 +405,7 @@ module Retry = struct
 end
 
 let add_awaiter loc before awaiter =
-  (* Fenceless is safe as we have fence after. *)
-  let state_old = fenceless_get (as_atomic loc) in
+  let state_old = Atomic.get (as_atomic loc) in
   let state_new =
     let awaiters = awaiter :: state_old.awaiters in
     { before = Obj.magic (); after = before; which = W After; awaiters }
@@ -444,8 +420,7 @@ let[@tail_mod_cons] rec remove_first x' removed = function
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
 let rec remove_awaiter backoff loc before awaiter =
-  (* Fenceless is safe as we have fence after. *)
-  let state_old = fenceless_get (as_atomic loc) in
+  let state_old = Atomic.get (as_atomic loc) in
   if before == eval state_old then
     let removed = ref true in
     let awaiters = remove_first awaiter removed state_old.awaiters in
@@ -469,8 +444,7 @@ let block timeout loc before =
   Timeout.unawait timeout alive
 
 let rec update_no_alloc timeout backoff loc state f =
-  (* Fenceless is safe as we have had a fence before if needed and there is a fence after. *)
-  let state_old = fenceless_get (as_atomic loc) in
+  let state_old = Atomic.get (as_atomic loc) in
   let before = eval state_old in
   match f before with
   | after ->
@@ -540,10 +514,9 @@ let[@inline] rec cas_with_state backoff loc before state state_old =
        (* We must retry, because compare is by value rather than by state.  In
           other words, we should not fail spuriously due to some other thread
           having installed or removed a waiter.
-
-          Fenceless is safe as there was a fence before. *)
+       *)
        cas_with_state (Backoff.once backoff) loc before state
-         (fenceless_get (as_atomic loc)))
+         (Atomic.get (as_atomic loc)))
 
 let inc x = x + 1
 let dec x = x - 1
@@ -581,8 +554,7 @@ module Loc = struct
         value
     | exception Retry.Later ->
         block timeout (to_loc loc) before;
-        (* Fenceless is safe as there was already a fence before. *)
-        get_as timeout f loc (fenceless_get (as_atomic (to_loc loc)))
+        get_as timeout f loc (Atomic.get (as_atomic (to_loc loc)))
     | exception exn ->
         Timeout.cancel timeout;
         raise exn
@@ -601,14 +573,6 @@ module Loc = struct
     let state_old = Atomic.get (as_atomic (to_loc loc)) in
     cas_with_state backoff (to_loc loc) before state state_old
 
-  let fenceless_update ?timeoutf ?(backoff = Backoff.default) loc f =
-    let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff (to_loc loc) f
-      (fenceless_get (as_atomic (to_loc loc)))
-
-  let[@inline] fenceless_modify ?timeoutf ?backoff loc f =
-    fenceless_update ?timeoutf ?backoff loc f |> ignore
-
   let update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
     update_with_state timeout backoff (to_loc loc) f
@@ -625,22 +589,17 @@ module Loc = struct
   let fetch_and_add ?backoff loc n =
     if n = 0 then get loc
     else
-      (* Fenceless is safe as we always update. *)
-      fenceless_update ?backoff loc (( + ) n)
+      update ?backoff loc (( + ) n)
 
   let incr ?backoff loc =
-    (* Fenceless is safe as we always update. *)
-    fenceless_update ?backoff loc inc |> ignore
+    update ?backoff loc inc |> ignore
 
   let decr ?backoff loc =
-    (* Fenceless is safe as we always update. *)
-    fenceless_update ?backoff loc dec |> ignore
+    update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
     let state = Atomic.get (as_atomic (to_loc loc)) in
     state.awaiters != []
-
-  let fenceless_get loc = eval (fenceless_get (as_atomic (to_loc loc)))
 end
 
 module Xt = struct
@@ -648,8 +607,7 @@ module Xt = struct
 
   let[@inline] validate_one which loc state =
     let before = if is_cmp which state then eval state else state.before in
-    (* Fenceless is safe inside transactions as each log update has a fence. *)
-    if before != eval (fenceless_get (as_atomic loc)) then Retry.invalid ()
+    if before != eval (Atomic.get (as_atomic loc)) then Retry.invalid ()
 
   let[@inline] rec validate_all_rec which = function
     | T Leaf -> ()
@@ -661,7 +619,6 @@ module Xt = struct
     validate_all_rec which node_r.gt
 
   let[@inline] is_obstruction_free (Xt xt_r : _ t) loc =
-    (* Fenceless is safe as we are accessing a private location. *)
     xt_r.mode == `Obstruction_free && 0 <= loc.id
 
   type (_, _) up =
@@ -673,7 +630,7 @@ module Xt = struct
 
   let update_new : type c a. _ -> a loc -> c -> (c, a) up -> _ -> _ -> a =
    fun xt loc c up lt gt ->
-    let state = fenceless_get (as_atomic loc) in
+    let state = Atomic.get (as_atomic loc) in
     let before = eval state in
     let after : a =
       match up with
@@ -846,9 +803,7 @@ module Xt = struct
                 let state = node_r.state in
                 if is_cmp which state then state
                 else
-                  (* Fenceless is safe inside transactions as each log update
-                     has a fence. *)
-                  let current = fenceless_get (as_atomic node_r.loc) in
+                  let current = Atomic.get (as_atomic node_r.loc) in
                   if state.before != eval current then Retry.invalid ()
                   else current
               in
@@ -933,9 +888,7 @@ module Xt = struct
               state.which <- W After;
               let before = state.before in
               if isnt_int before then state.before <- Obj.magic ();
-              (* Fenceless is safe inside transactions as each log update has a
-                 fence. *)
-              let state_old = fenceless_get (as_atomic loc) in
+              let state_old = Atomic.get (as_atomic loc) in
               if cas_with_state Backoff.default loc before state state_old then
                 success xt result
               else commit_once_reuse backoff xt tx
@@ -958,8 +911,7 @@ module Xt = struct
                 then success xt result
                 else commit_once_alloc backoff xt_r.mode xt tx
             | exception Exit ->
-                (* Fenceless is safe as there was a fence before. *)
-                if fenceless_get (root_as_atomic xt) == R After then
+                if Atomic.get (root_as_atomic xt) == R After then
                   success xt result
                 else commit_once_alloc backoff xt_r.mode xt tx
           end

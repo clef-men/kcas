@@ -24,15 +24,13 @@ let length s = Loc.get s |> Elems.length
 let is_empty s = Loc.get s == Elems.empty
 
 let push x s =
-  (* Fenceless is safe as we always update. *)
-  Loc.fenceless_modify s @@ Elems.cons x
+  Loc.modify s @@ Elems.cons x
 
 let pop_opt s = Loc.update s Elems.tl_safe |> Elems.hd_opt
 let pop_all s = Loc.exchange s Elems.empty |> Elems.to_seq
 
 let pop_blocking ?timeoutf s =
-  (* Fenceless is safe as we always update. *)
-  Loc.fenceless_update ?timeoutf s Elems.tl_or_retry |> Elems.hd_unsafe
+  Loc.update ?timeoutf s Elems.tl_or_retry |> Elems.hd_unsafe
 
 let top_opt s = Loc.get s |> Elems.hd_opt
 let top_blocking ?timeoutf s = Loc.get_as ?timeoutf Elems.hd_or_retry s

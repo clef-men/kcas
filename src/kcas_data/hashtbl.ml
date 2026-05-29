@@ -234,7 +234,7 @@ module Xt = struct
             let initial_state = Array.length old_buckets in
             while true do
               (* If state is modified outside our expensive tx would fail. *)
-              if Loc.fenceless_get state != initial_state then Retry.invalid ();
+              if Loc.get state != initial_state then Retry.invalid ();
               rehash_a_few_buckets ~xt
             done;
             r
@@ -255,7 +255,7 @@ module Xt = struct
         let r = Multicore_magic.copy_as_padded { r with pending = Nothing } in
         Xt.set ~xt t r;
         (* Check state to ensure that buckets have not been updated. *)
-        if Loc.fenceless_get state < 0 then Retry.invalid ();
+        if Loc.get state < 0 then Retry.invalid ();
         let snapshot =
           get_or_alloc snapshot Array.make (Array.length buckets)
         in
@@ -278,7 +278,7 @@ module Xt = struct
         assert (not must_be_done_in_this_tx);
         let old_buckets = r.buckets in
         (* Check state to ensure that buckets have not been updated. *)
-        if Loc.fenceless_get state < 0 then Retry.invalid ();
+        if Loc.get state < 0 then Retry.invalid ();
         let new_capacity = Array.length old_buckets in
         let new_buckets =
           get_or_alloc new_buckets Loc.make_array new_capacity
@@ -384,22 +384,19 @@ end
 
 let find_opt t k =
   let t = Loc.get t in
-  (* Fenceless is safe as we have a fence above. *)
-  t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
+  t.buckets |> bucket_of t.hash k |> Loc.get
   |> Assoc.find_opt t.equal k
 
 let find_all t k =
   let t = Loc.get t in
-  (* Fenceless is safe as we have a fence above. *)
-  t.buckets |> bucket_of t.hash k |> Loc.fenceless_get
+  t.buckets |> bucket_of t.hash k |> Loc.get
   |> Assoc.find_all t.equal k
 
 let find t k = match find_opt t k with None -> raise Not_found | Some v -> v
 
 let mem t k =
   let t = Loc.get t in
-  (* Fenceless is safe as we have a fence above. *)
-  t.buckets |> bucket_of t.hash k |> Loc.fenceless_get |> Assoc.mem t.equal k
+  t.buckets |> bucket_of t.hash k |> Loc.get |> Assoc.mem t.equal k
 
 let clear t = Kcas.Xt.commit { tx = Xt.clear t }
 let reset t = Kcas.Xt.commit { tx = Xt.reset t }
@@ -422,8 +419,7 @@ let snapshot ?length ?record t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t } |> ignore;
-  (* Fenceless is safe as commit above has fences. *)
-  Loc.fenceless_get snapshot
+  Loc.get snapshot
 
 let to_seq t =
   let snapshot = snapshot t in
@@ -494,8 +490,7 @@ let filter_map_inplace fn t =
   in
   Kcas.Xt.commit { tx };
   Kcas.Xt.commit { tx = Xt.perform_pending t } |> ignore;
-  (* Fenceless is safe as commit above has fences. *)
-  match Loc.fenceless_get raised with Done -> () | exn -> raise exn
+  match Loc.get raised with Done -> () | exn -> raise exn
 
 let stats t =
   let length = ref 0 in

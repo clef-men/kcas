@@ -82,7 +82,7 @@ module Xt = struct
 
   let add_node_l ~xt node list =
     let (At rhs) = Xt.get ~xt (rhs_of list) in
-    assert (Loc.fenceless_get (lhs_of node) == At list);
+    assert (Loc.get (lhs_of node) == At list);
     Loc.set (rhs_of node) (At rhs);
     Xt.set ~xt (rhs_of list) (At node);
     Xt.set ~xt (lhs_of rhs) (At node);
@@ -98,7 +98,7 @@ module Xt = struct
   let add_node_r ~xt node list =
     let (At lhs) = Xt.get ~xt (lhs_of list) in
     Loc.set (lhs_of node) (At lhs);
-    assert (Loc.fenceless_get (rhs_of node) == At list);
+    assert (Loc.get (rhs_of node) == At list);
     Xt.set ~xt (lhs_of list) (At node);
     Xt.set ~xt (rhs_of lhs) (At node);
     node

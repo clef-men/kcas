@@ -220,12 +220,11 @@ let[@inline] is_determined_after (status : [< `Before | `After ] tdt) =
 
 type not_float = which
 
-let[@inline] get (state : 'a state) (index : bool) : 'a =
-  (* Here we treat the [state] record as an array of non-float values.  This
-     allows accessing the value (i.e. [before] or [after]) without using
-     branches. *)
-  Obj.magic
-    (Array.unsafe_get (Obj.magic state : not_float array) (Bool.to_int index))
+let[@inline] get state index =
+  if index then
+    state.after
+  else
+    state.before
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
 

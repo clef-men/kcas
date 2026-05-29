@@ -218,8 +218,6 @@ let[@inline] is_determined_after (status : [< `Before | `After ] tdt) =
   | After ->
       true
 
-type not_float = which
-
 let[@inline] get state index =
   if index then
     state.after
@@ -228,14 +226,14 @@ let[@inline] get state index =
 
 let[@inline] isnt_int x = not (Obj.is_int (Obj.repr x))
 
-let[@inline] clear_other (state : 'a state) status =
-  (* Here we treat the [state] record as an array of non-float values.  This
-     allows accessing the value (i.e. [before] or [after]) without using
-     branches. *)
-  let i = 1 - Bool.to_int (is_determined_after status) in
-  let state = (Obj.magic state : not_float array) in
-  if isnt_int (Array.unsafe_get state i) then
-    Array.unsafe_set state i (Obj.magic ())
+let[@inline] clear_other state (status : [< `Before | `After ] tdt) =
+  match status with
+  | Before ->
+      if isnt_int state.after then
+        state.after <- Obj.magic ()
+  | After ->
+      if isnt_int state.before then
+        state.before <- Obj.magic ()
 
 let[@inline] is_determined = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin

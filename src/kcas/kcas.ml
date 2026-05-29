@@ -12,20 +12,23 @@ module Timeout = struct
     | Unset : [> `Unset ] t
     | Elapsed : [> `Elapsed ] t
     | Call : (unit -> unit) -> [> `Call ] t
-    | Set : { mutable state : [< `Elapsed | `Call ] t } -> [> `Set ] t
-
-  external as_atomic : [< `Set ] t -> [< `Elapsed | `Call ] t Atomic.t
-    = "%identity"
+    | Set :
+      { mutable state : [`Elapsed | `Call ] t [@atomic]
+      } ->
+      [> `Set ] t
 
   let[@inline] check (t : [< `Set | `Unset ] t) =
     match t with
-    | Unset -> ()
+    | Unset ->
+        ()
     | Set set_r ->
-        if Atomic.get (as_atomic (Set set_r)) == Elapsed then timeout ()
+        if set_r.state == Elapsed then
+          timeout ()
 
-  let set seconds (state : [< `Elapsed | `Call ] t Atomic.t) =
+  let set seconds (t : [< `Set] t) =
+    let Set set_r = t in
     Domain_local_timeout.set_timeoutf seconds @@ fun () ->
-    match Atomic.exchange state Elapsed with
+    match Atomic.Loc.exchange [%atomic.loc set_r.state] Elapsed with
     | Call release_or_cancel -> release_or_cancel ()
     | Elapsed -> ()
 
@@ -33,46 +36,62 @@ module Timeout = struct
 
   let[@inline never] alloc seconds =
     let (Set set_r as t : [ `Set ] t) = Set { state = call_id } in
-    let cancel = set seconds (as_atomic t) in
-    if not (Atomic.compare_and_set (as_atomic t) call_id (Call cancel)) then
+    let cancel = set seconds t in
+    if not @@ Atomic.Loc.compare_and_set [%atomic.loc set_r.state] call_id (Call cancel) then
       timeout ();
-    Set set_r
+    t
 
   let[@inline] alloc_opt = function
     | None -> Unset
     | Some seconds -> alloc seconds
 
-  let[@inline never] await (state : [< `Elapsed | `Call ] t Atomic.t) release =
-    match Atomic.get state with
+  let[@inline never] await (t : [< `Set] t) release =
+    let Set set_r = t in
+    match set_r.state with
     | Call cancel as alive ->
-        if Atomic.compare_and_set state alive (Call release) then Call cancel
-        else timeout ()
-    | Elapsed -> timeout ()
+        if Atomic.Loc.compare_and_set [%atomic.loc set_r.state] alive (Call release) then
+          Call cancel
+        else
+          timeout ()
+    | Elapsed ->
+        timeout ()
 
   let[@inline] await (t : [ `Unset | `Set ] t) release =
-    match t with Unset -> Unset | Set r -> await (as_atomic (Set r)) release
+    match t with
+    | Unset ->
+        Unset
+    | Set _ as t ->
+        await t release
 
-  let[@inline never] unawait (state : [< `Elapsed | `Call ] t Atomic.t) alive =
-    match Atomic.get state with
+  let[@inline never] unawait (t : [< `Set] t) alive =
+    let Set set_r = t in
+    match set_r.state with
     | Call _ as await ->
-        if not (Atomic.compare_and_set state await alive) then timeout ()
-    | Elapsed -> timeout ()
+        if not @@ Atomic.Loc.compare_and_set [%atomic.loc set_r.state] await alive then
+          timeout ()
+    | Elapsed ->
+        timeout ()
 
   let[@inline] unawait t alive =
-    match (t, alive) with
-    | Set set_r, Call call_r -> unawait (as_atomic (Set set_r)) (Call call_r)
-    | _ -> ()
+    match t, alive with
+    | (Set _ as t), (Call _ as alive) ->
+        unawait t alive
+    | _ ->
+        ()
 
   let[@inline] cancel_alive (alive : [< `Unset | `Call ] t) =
     match alive with Unset -> () | Call cancel -> cancel ()
 
   let[@inline] cancel (t : [< `Set | `Unset ] t) =
     match t with
-    | Unset -> ()
-    | Set set_r -> (
-        match Atomic.get (as_atomic (Set set_r)) with
-        | Elapsed -> ()
-        | Call cancel -> cancel ())
+    | Unset ->
+        ()
+    | Set set_r ->
+        match set_r.state with
+        | Elapsed ->
+            ()
+        | Call cancel ->
+            cancel ()
 end
 
 module Id = struct

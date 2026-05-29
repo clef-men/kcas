@@ -157,10 +157,7 @@ and _ tdt =
 
           Keep [After] second (i.e. value [1] or [true]). *)
   | Xt : {
-      mutable rot : rot;
-          (** [rot] is for Root or Tree.
-
-              This field must be first, see [root_as_atomic]. *)
+      mutable rot : rot; [@atomic]
       timeout : [ `Set | `Unset ] Timeout.t;
       mode : Mode.t;
       mutable validate_counter : int;
@@ -184,7 +181,6 @@ and _ tdt =
       (** Branch node in the transaction log or [tree] that specifies a single
           [CAS] or [CMP] operation. *)
 
-and root = R : [< `Before | `After | `Node ] tdt -> root [@@unboxed]
 and tree = T : [< `Leaf | `Node ] tdt -> tree [@@unboxed]
 and rot = U : [< `Before | `After | `Node | `Leaf ] tdt -> rot [@@unboxed]
 and which = W : [< `Before | `After | `Xt ] tdt -> which [@@unboxed]
@@ -205,8 +201,6 @@ let[@inline] make_loc padded state id =
     Multicore_magic.copy_as_padded record
   else
     record
-
-external root_as_atomic : [< `Xt ] tdt -> root Atomic.t = "%identity"
 
 let[@inline] is_node tree = tree != T Leaf
 let[@inline] is_cmp which state = state.which != W which
@@ -236,12 +230,15 @@ let[@inline] clear_other state (status : [< `Before | `After ] tdt) =
       if isnt_int state.before then
         state.before <- Obj.magic ()
 
-let[@inline] is_determined = function
-  | (Xt _ as xt : [< `Xt ] tdt) -> begin
-      match Atomic.get (root_as_atomic xt) with
-      | R (Node _) -> false
-      | R After | R Before -> true
-    end
+let[@inline] is_determined (xt : [< `Xt] tdt) =
+  let Xt xt_r = xt in
+  match xt_r.rot with
+  | U Leaf
+  | U (Node _) ->
+      false
+  | U After
+  | U Before ->
+      true
 
 let[@inline] rec release_rec which status = function
   | T Leaf -> is_determined_after status
@@ -271,11 +268,12 @@ and verify which (Node node_r : [< `Node ] tdt) =
     else verify_rec which node_r.gt
   else status
 
-let finish which root status =
-  if Atomic.compare_and_set (root_as_atomic which) (R root) (R status) then
+let finish (which : [< `Xt] tdt) root status =
+  let Xt which_r = which in
+  if Atomic.Loc.compare_and_set [%atomic.loc which_r.rot] (U root) (U status) then
     release which status root
   else
-    Atomic.get (root_as_atomic which) == R After
+    which_r.rot == U After
 
 let a_cmp = 1
 let a_cas = 2
@@ -334,23 +332,26 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
     else
       -1
 
-and is_undetermined_after = function
-  | (Xt _ as xt : [< `Xt ] tdt) -> begin
-      match Atomic.get (root_as_atomic xt) with
-      | R (Node node_r) -> begin
-          let root = Node node_r in
-          match determine xt 0 root with
-          | status ->
-              finish xt root
-                (if a_cmp_followed_by_a_cas < status then verify xt root
-                 else if 0 <= status then After
-                 else Before)
-          | exception Exit ->
-              Atomic.get (root_as_atomic xt) == R After
-        end
-      | R Before -> false
-      | R After -> true
-    end
+and is_undetermined_after xt =
+  let Xt xt_r = xt in
+  match xt_r.rot with
+  | U Leaf ->
+      true
+  | U (Node node_r) ->
+      let root = Node node_r in
+      begin match determine xt 0 root with
+      | status ->
+          finish xt root
+            (if a_cmp_followed_by_a_cas < status then verify xt root
+             else if 0 <= status then After
+             else Before)
+      | exception Exit ->
+          xt_r.rot == U After
+      end
+  | U Before ->
+      false
+  | U After ->
+      true
 
 let[@inline never] impossible () = failwith "impossible"
 let[@inline never] invalid_retry () = failwith "kcas: invalid use of retry"
@@ -910,7 +911,7 @@ module Xt = struct
                 then success xt result
                 else commit_once_alloc backoff xt_r.mode xt tx
             | exception Exit ->
-                if Atomic.get (root_as_atomic xt) == R After then
+                if xt_r.rot == U After then
                   success xt result
                 else commit_once_alloc backoff xt_r.mode xt tx
           end

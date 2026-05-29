@@ -160,8 +160,7 @@ and _ tdt =
       mutable rot : rot;
           (** [rot] is for Root or Tree.
 
-              This field must be first, see [root_as_atomic] and
-              [tree_as_ref]. *)
+              This field must be first, see [root_as_atomic]. *)
       timeout : [ `Set | `Unset ] Timeout.t;
       mode : Mode.t;
       mutable validate_counter : int;
@@ -195,6 +194,11 @@ and 'a loc =
   ; id : int
   }
 
+let tree_as_rot : tree -> rot =
+  Obj.magic
+let rot_as_tree : rot -> tree =
+  Obj.magic
+
 let[@inline] make_loc padded state id =
   let record = { state; id } in
   if padded then
@@ -203,7 +207,6 @@ let[@inline] make_loc padded state id =
     record
 
 external root_as_atomic : [< `Xt ] tdt -> root Atomic.t = "%identity"
-external tree_as_ref : [< `Xt ] tdt -> tree ref = "%identity"
 
 let[@inline] is_node tree = tree != T Leaf
 let[@inline] is_cmp which state = state.which != W which
@@ -623,6 +626,7 @@ module Xt = struct
 
   let update_new : type c a. _ -> a loc -> c -> (c, a) up -> _ -> _ -> a =
    fun xt loc c up lt gt ->
+    let Xt xt_r = xt in
     let state = loc.state in
     let before = eval state in
     let after : a =
@@ -630,14 +634,14 @@ module Xt = struct
       | Compare_and_swap -> if fst c == before then snd c else before
       | Fetch_and_add -> before + c
       | Fn -> begin
-          let rot = !(tree_as_ref xt) in
+          let rot = xt_r.rot in
           match c before with
           | after ->
-              assert (rot == !(tree_as_ref xt));
+              assert (rot == xt_r.rot);
               after
           | exception exn ->
-              assert (rot == !(tree_as_ref xt));
-              tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
+              assert (rot == xt_r.rot);
+              xt_r.rot <- U (Node { loc; state; lt; gt; awaiters = [] });
               raise exn
         end
       | Exchange -> c
@@ -647,7 +651,7 @@ module Xt = struct
       if before == after && is_obstruction_free xt loc then state
       else { before; after; which = W xt; awaiters = [] }
     in
-    tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
+    xt_r.rot <- U (Node { loc; state; lt; gt; awaiters = [] });
     before
 
   let update_old : type c a. _ -> a loc -> c -> (c, a) up -> _ -> _ -> _ -> a =
@@ -661,7 +665,7 @@ module Xt = struct
        the same locations. *)
     if c0 land c1 = 0 then begin
       Timeout.check xt_r.timeout;
-      validate_all_rec xt !(tree_as_ref xt)
+      validate_all_rec xt (rot_as_tree xt_r.rot)
     end;
     let state : a state = Obj.magic state' in
     if is_cmp xt state then begin
@@ -671,9 +675,9 @@ module Xt = struct
         | Compare_and_swap -> if fst c == current then snd c else current
         | Fetch_and_add -> current + c
         | Fn ->
-            let rot = !(tree_as_ref xt) in
+            let rot = xt_r.rot in
             let after = c current in
-            assert (rot == !(tree_as_ref xt));
+            assert (rot == xt_r.rot);
             after
         | Exchange -> c
         | Get -> current
@@ -682,7 +686,7 @@ module Xt = struct
         if current == after then state
         else { before = current; after; which = W xt; awaiters = [] }
       in
-      tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
+      xt_r.rot <- U (Node { loc; state; lt; gt; awaiters = [] });
       current
     end
     else
@@ -692,9 +696,9 @@ module Xt = struct
         | Compare_and_swap -> if fst c == current then snd c else current
         | Fetch_and_add -> current + c
         | Fn ->
-            let rot = !(tree_as_ref xt) in
+            let rot = xt_r.rot in
             let after = c current in
-            assert (rot == !(tree_as_ref xt));
+            assert (rot == xt_r.rot);
             after
         | Exchange -> c
         | Get -> current
@@ -703,12 +707,13 @@ module Xt = struct
         if current == after then state
         else { before = state.before; after; which = W xt; awaiters = [] }
       in
-      tree_as_ref xt := T (Node { loc; state; lt; gt; awaiters = [] });
+      xt_r.rot <- U (Node { loc; state; lt; gt; awaiters = [] });
       current
 
   let update_as ~xt loc c up =
+    let Xt xt_r = xt in
     let x = loc.id in
-    match !(tree_as_ref xt) with
+    match rot_as_tree xt_r.rot with
     | T Leaf -> update_new xt loc c up (T Leaf) (T Leaf)
     | T (Node { loc = a; lt = T Leaf; _ }) as tree when x < a.id ->
         update_new xt loc c up (T Leaf) tree
@@ -752,8 +757,9 @@ module Xt = struct
 
   let do_op : type r. xt:'x t -> 'a Loc.t -> r op -> r =
    fun ~xt loc op ->
+    let Xt xt_r = xt in
     let x = loc.id in
-    match !(tree_as_ref xt) with
+    match rot_as_tree xt_r.rot with
     | T Leaf -> begin match op with Validate -> () | Is_in_log -> false end
     | T (Node { loc = a; lt = T Leaf; _ }) when x < a.id -> begin
         match op with Validate -> () | Is_in_log -> false
@@ -767,7 +773,7 @@ module Xt = struct
     | tree -> begin
         match splay ~hit_parent:true x tree with
         | lt, T (Node node_r), gt -> begin
-            tree_as_ref xt := T (Node { node_r with lt; gt; awaiters = [] });
+            xt_r.rot <- U (Node { node_r with lt; gt; awaiters = [] });
             match op with
             | Validate ->
                 if Obj.magic node_r.loc == loc then
@@ -807,10 +813,11 @@ module Xt = struct
 
   type 'x snap = tree * Action.t
 
-  let snapshot ~xt:(Xt xt_r as xt : _ t) = (!(tree_as_ref xt), xt_r.post_commit)
+  let snapshot ~xt:(Xt xt_r : _ t) =
+    rot_as_tree xt_r.rot, xt_r.post_commit
 
   let rollback ~xt:(Xt xt_r as xt : _ t) (snap, post_commit) =
-    tree_as_ref xt := rollback xt snap !(tree_as_ref xt);
+    xt_r.rot <- tree_as_rot (rollback xt snap (rot_as_tree xt_r.rot));
     xt_r.post_commit <- post_commit
 
   let rec first ~xt tx = function
@@ -871,8 +878,9 @@ module Xt = struct
   let rec commit backoff (Xt xt_r as xt : _ t) tx =
     match tx ~xt with
     | result -> begin
-        match !(tree_as_ref xt) with
-        | T Leaf -> success xt result
+        match rot_as_tree xt_r.rot with
+        | T Leaf ->
+            success xt result
         | T (Node { loc; state; lt = T Leaf; gt = T Leaf; _ }) ->
             if is_cmp xt state then success xt result
             else begin
@@ -909,7 +917,7 @@ module Xt = struct
       end
     | exception Retry.Invalid -> commit_once_reuse backoff xt tx
     | exception Retry.Later -> begin
-        match !(tree_as_ref xt) with
+        match rot_as_tree xt_r.rot with
         | T Leaf -> invalid_retry ()
         | T (Node node_r) -> begin
             let root = Node node_r in
@@ -944,7 +952,7 @@ module Xt = struct
     commit_reuse (Backoff.reset backoff) xt tx
 
   and commit_reuse backoff (Xt xt_r as xt : _ t) tx =
-    tree_as_ref xt := T Leaf;
+    xt_r.rot <- U Leaf;
     xt_r.validate_counter <- initial_validate_period;
     xt_r.post_commit <- Action.noop;
     Timeout.check xt_r.timeout;

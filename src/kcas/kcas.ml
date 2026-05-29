@@ -138,8 +138,8 @@ module Mode = struct
 end
 
 type 'a state = {
-  mutable before : 'a;  (** Keep [before] first (i.e. at index [0]). *)
-  mutable after : 'a;  (** Keep [after] second (i.e. at index [1]). *)
+  mutable before : 'a;
+  mutable after : 'a;
   mutable which : which;
   awaiters : awaiter list;
 }
@@ -208,10 +208,6 @@ external tree_as_ref : [< `Xt ] tdt -> tree ref = "%identity"
 let[@inline] is_node tree = tree != T Leaf
 let[@inline] is_cmp which state = state.which != W which
 let[@inline] is_cas which state = state.which == W which
-
-let () =
-  assert (Before == Obj.magic false);
-  assert (After == Obj.magic true)
 
 let[@inline] is_determined_after (status : [< `Before | `After ] tdt) =
   match status with

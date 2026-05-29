@@ -190,34 +190,17 @@ and tree = T : [< `Leaf | `Node ] tdt -> tree [@@unboxed]
 and rot = U : [< `Before | `After | `Node | `Leaf ] tdt -> rot [@@unboxed]
 and which = W : [< `Before | `After | `Xt ] tdt -> which [@@unboxed]
 
-(* NOTE: You can adjust comment blocks below to select whether or not to use an
-   unsafe cast to avoid a level of indirection due to [Atomic.t] and reduce the
-   size of a location by two words (or more when padded).  This has been seen
-   to provide significant performance improvements. *)
-
-(**)
-and 'a loc = { mutable _state : 'a state; id : int }
-
-external as_atomic : 'a loc -> 'a state Atomic.t = "%identity"
+and 'a loc =
+  { mutable state : 'a state [@atomic]
+  ; id : int
+  }
 
 let[@inline] make_loc padded state id =
-  let record = { _state = state; id } in
-  if padded then Multicore_magic.copy_as_padded record else record
-(**)
-
-(*
-and 'a loc = { state : 'a state Atomic.t; id : int }
-
-let[@inline] as_atomic loc = loc.state
-
-let[@inline] make_loc padded state id =
-  let atomic = Atomic.make state in
-  let state =
-    if padded then Multicore_magic.copy_as_padded atomic else atomic
-  in
   let record = { state; id } in
-  if padded then Multicore_magic.copy_as_padded record else record
-*)
+  if padded then
+    Multicore_magic.copy_as_padded record
+  else
+    record
 
 external root_as_atomic : [< `Xt ] tdt -> root Atomic.t = "%identity"
 external tree_as_ref : [< `Xt ] tdt -> tree ref = "%identity"
@@ -283,8 +266,8 @@ and verify which (Node node_r : [< `Node ] tdt) =
   let status = verify_rec which node_r.lt in
   if status == After then
     if
-      is_cmp which node_r.state
-      && Atomic.get (as_atomic node_r.loc) != node_r.state
+      is_cmp which node_r.state &&
+      node_r.loc.state != node_r.state
     then Before
     else verify_rec which node_r.gt
   else status
@@ -313,7 +296,7 @@ and determine which status (Node node_r : [< `Node ] tdt) =
   else determine_eq Backoff.default which status (Node node_r)
 
 and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
-  let current = Atomic.get (as_atomic node_r.loc) in
+  let current = node_r.loc.state in
   let state = node_r.state in
   if state == current then begin
     let a_cas_or_a_cmp = 1 + Bool.to_int (is_cas which state) in
@@ -344,11 +327,13 @@ and determine_eq backoff which status (Node node_r as eq : [< `Node ] tdt) =
          might finish the operation after the [compare_and_set] and miss the
          awaiters. *)
       if current.awaiters != [] then node_r.awaiters <- current.awaiters;
-      if Atomic.compare_and_set (as_atomic node_r.loc) current state then
+      if Atomic.Loc.compare_and_set [%atomic.loc node_r.loc.state] current state then
         determine_rec which (next_status a_cas status) node_r.gt
-      else determine_eq (Backoff.once backoff) which status eq
+      else
+        determine_eq (Backoff.once backoff) which status eq
     end
-    else -1
+    else
+      -1
 
 and is_undetermined_after = function
   | (Xt _ as xt : [< `Xt ] tdt) -> begin
@@ -421,13 +406,13 @@ module Retry = struct
 end
 
 let add_awaiter loc before awaiter =
-  let state_old = Atomic.get (as_atomic loc) in
+  let state_old = loc.state in
   let state_new =
     let awaiters = awaiter :: state_old.awaiters in
     { before = Obj.magic (); after = before; which = W After; awaiters }
   in
   before == eval state_old
-  && Atomic.compare_and_set (as_atomic loc) state_old state_new
+  && Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state_new
 
 let[@tail_mod_cons] rec remove_first x' removed = function
   | [] ->
@@ -436,7 +421,7 @@ let[@tail_mod_cons] rec remove_first x' removed = function
   | x :: xs -> if x == x' then xs else x :: remove_first x' removed xs
 
 let rec remove_awaiter backoff loc before awaiter =
-  let state_old = Atomic.get (as_atomic loc) in
+  let state_old = loc.state in
   if before == eval state_old then
     let removed = ref true in
     let awaiters = remove_first awaiter removed state_old.awaiters in
@@ -444,7 +429,7 @@ let rec remove_awaiter backoff loc before awaiter =
       let state_new =
         { before = Obj.magic (); after = before; which = W After; awaiters }
       in
-      if not (Atomic.compare_and_set (as_atomic loc) state_old state_new) then
+      if not @@ Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state_new then
         remove_awaiter (Backoff.once backoff) loc before awaiter
 
 let block timeout loc before =
@@ -460,7 +445,7 @@ let block timeout loc before =
   Timeout.unawait timeout alive
 
 let rec update_no_alloc timeout backoff loc state f =
-  let state_old = Atomic.get (as_atomic loc) in
+  let state_old = loc.state in
   let before = eval state_old in
   match f before with
   | after ->
@@ -470,7 +455,7 @@ let rec update_no_alloc timeout backoff loc state f =
       end
       else begin
         state.after <- after;
-        if Atomic.compare_and_set (as_atomic loc) state_old state then begin
+        if Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state then begin
           resume_awaiters state_old.awaiters;
           Timeout.cancel timeout;
           before
@@ -494,7 +479,7 @@ let update_with_state timeout backoff loc f state_old =
       end
       else
         let state = new_state after in
-        if Atomic.compare_and_set (as_atomic loc) state_old state then begin
+        if Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state then begin
           resume_awaiters state_old.awaiters;
           Timeout.cancel timeout;
           before
@@ -509,44 +494,42 @@ let update_with_state timeout backoff loc f state_old =
       raise exn
 
 let rec exchange_no_alloc backoff loc state =
-  let state_old = Atomic.get (as_atomic loc) in
+  let state_old = loc.state in
   let before = eval state_old in
   if before == state.after then before
-  else if Atomic.compare_and_set (as_atomic loc) state_old state then begin
+  else if Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state then begin
     resume_awaiters state_old.awaiters;
     before
   end
   else exchange_no_alloc (Backoff.once backoff) loc state
 
 let[@inline] rec cas_with_state backoff loc before state state_old =
-  before == eval state_old
-  && (before == state.after
-     ||
-     if Atomic.compare_and_set (as_atomic loc) state_old state then begin
+  before == eval state_old &&
+  ( before == state.after
+    ||
+     if Atomic.Loc.compare_and_set [%atomic.loc loc.state] state_old state then (
        resume_awaiters state_old.awaiters;
        true
-     end
-     else
+     ) else (
        (* We must retry, because compare is by value rather than by state.  In
           other words, we should not fail spuriously due to some other thread
           having installed or removed a waiter.
        *)
-       cas_with_state (Backoff.once backoff) loc before state
-         (Atomic.get (as_atomic loc)))
+       cas_with_state (Backoff.once backoff) loc before state loc.state
+     )
+  )
 
 let inc x = x + 1
 let dec x = x - 1
 
 module Loc = struct
-  type !'a t = private Loc : { state : 'state; id : 'id } -> 'a t
-
-  external of_loc : 'a loc -> 'a t = "%identity"
-  external to_loc : 'a t -> 'a loc = "%identity"
+  type !'a t =
+    'a loc
 
   let make ?(padded = false) ?(mode = `Obstruction_free) after =
     let state = new_state after
     and id = if mode == `Obstruction_free then Id.nat_id () else Id.neg_id () in
-    make_loc padded state id |> of_loc
+    make_loc padded state id
 
   let make_contended ?mode after = make ~padded:true ?mode after
 
@@ -557,10 +540,12 @@ module Loc = struct
       (if mode == `Obstruction_free then Id.nat_ids n else Id.neg_ids n)
       - (n - 1)
     in
-    Array.init n @@ fun i -> make_loc padded state (id + i) |> of_loc
+    Array.init n @@ fun i -> make_loc padded state (id + i)
 
-  let[@inline] get_id loc = (to_loc loc).id
-  let get loc = eval (Atomic.get (as_atomic (to_loc loc)))
+  let[@inline] get_id loc =
+    loc.id
+  let get loc =
+    eval loc.state
 
   let rec get_as timeout f loc state =
     let before = eval state in
@@ -569,36 +554,32 @@ module Loc = struct
         Timeout.cancel timeout;
         value
     | exception Retry.Later ->
-        block timeout (to_loc loc) before;
-        get_as timeout f loc (Atomic.get (as_atomic (to_loc loc)))
+        block timeout loc before;
+        get_as timeout f loc loc.state
     | exception exn ->
         Timeout.cancel timeout;
         raise exn
 
   let[@inline] get_as ?timeoutf f loc =
-    get_as
-      (Timeout.alloc_opt timeoutf)
-      f loc
-      (Atomic.get (as_atomic (to_loc loc)))
+    get_as (Timeout.alloc_opt timeoutf) f loc loc.state
 
   let[@inline] get_mode loc =
-    if (to_loc loc).id < 0 then `Lock_free else `Obstruction_free
+    if loc.id < 0 then `Lock_free else `Obstruction_free
 
   let compare_and_set ?(backoff = Backoff.default) loc before after =
     let state = new_state after in
-    let state_old = Atomic.get (as_atomic (to_loc loc)) in
-    cas_with_state backoff (to_loc loc) before state state_old
+    let state_old = loc.state in
+    cas_with_state backoff loc before state state_old
 
   let update ?timeoutf ?(backoff = Backoff.default) loc f =
     let timeout = Timeout.alloc_opt timeoutf in
-    update_with_state timeout backoff (to_loc loc) f
-      (Atomic.get (as_atomic (to_loc loc)))
+    update_with_state timeout backoff loc f loc.state
 
   let[@inline] modify ?timeoutf ?backoff loc f =
     update ?timeoutf ?backoff loc f |> ignore
 
   let exchange ?(backoff = Backoff.default) loc value =
-    exchange_no_alloc backoff (to_loc loc) (new_state value)
+    exchange_no_alloc backoff loc (new_state value)
 
   let set ?backoff loc value = exchange ?backoff loc value |> ignore
 
@@ -614,8 +595,7 @@ module Loc = struct
     update ?backoff loc dec |> ignore
 
   let has_awaiters loc =
-    let state = Atomic.get (as_atomic (to_loc loc)) in
-    state.awaiters != []
+    loc.state.awaiters != []
 end
 
 module Xt = struct
@@ -623,7 +603,8 @@ module Xt = struct
 
   let[@inline] validate_one which loc state =
     let before = if is_cmp which state then eval state else state.before in
-    if before != eval (Atomic.get (as_atomic loc)) then Retry.invalid ()
+    if before != eval loc.state then
+      Retry.invalid ()
 
   let[@inline] rec validate_all_rec which = function
     | T Leaf -> ()
@@ -646,7 +627,7 @@ module Xt = struct
 
   let update_new : type c a. _ -> a loc -> c -> (c, a) up -> _ -> _ -> a =
    fun xt loc c up lt gt ->
-    let state = Atomic.get (as_atomic loc) in
+    let state = loc.state in
     let before = eval state in
     let after : a =
       match up with
@@ -730,7 +711,6 @@ module Xt = struct
       current
 
   let update_as ~xt loc c up =
-    let loc = Loc.to_loc loc in
     let x = loc.id in
     match !(tree_as_ref xt) with
     | T Leaf -> update_new xt loc c up (T Leaf) (T Leaf)
@@ -776,7 +756,6 @@ module Xt = struct
 
   let do_op : type r. xt:'x t -> 'a Loc.t -> r op -> r =
    fun ~xt loc op ->
-    let loc = Loc.to_loc loc in
     let x = loc.id in
     match !(tree_as_ref xt) with
     | T Leaf -> begin match op with Validate -> () | Is_in_log -> false end
@@ -819,7 +798,7 @@ module Xt = struct
                 let state = node_r.state in
                 if is_cmp which state then state
                 else
-                  let current = Atomic.get (as_atomic node_r.loc) in
+                  let current = node_r.loc.state in
                   if state.before != eval current then Retry.invalid ()
                   else current
               in
@@ -904,7 +883,7 @@ module Xt = struct
               state.which <- W After;
               let before = state.before in
               if isnt_int before then state.before <- Obj.magic ();
-              let state_old = Atomic.get (as_atomic loc) in
+              let state_old = loc.state in
               if cas_with_state Backoff.default loc before state state_old then
                 success xt result
               else commit_once_reuse backoff xt tx

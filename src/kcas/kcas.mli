@@ -47,9 +47,9 @@
       # let a = Loc.make 0
         and b = Loc.make 0
         and x = Loc.make 0
-      val a : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
-      val b : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
-      val x : int Loc.t = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
+      val a : int Loc.t = <abstr>
+      val b : int Loc.t = <abstr>
+      val x : int Loc.t = <abstr>
     ]}
 
     One can then manipulate the locations individually:
@@ -140,20 +140,16 @@ module Retry : sig
   (** [invalid ()] is equivalent to [raise Invalid]. *)
 end
 
-(** Operating modes of the [k-CAS-n-CMP] algorithm. *)
-module Mode : sig
-  type t =
-    [ `Lock_free
-      (** In [`Lock_free] mode the algorithm makes sure that at least one domain will
-      be able to make progress at the cost of performing read-only operations as
-      read-write operations. *)
-    | `Obstruction_free
-      (** In [`Obstruction_free] mode the algorithm proceeds optimistically and
-      allows read-only operations to fail due to interference from other domains
-      that might have been prevented in the [`Lock_free] mode. *)
-    ]
-  (** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
-end
+type mode =
+  | Lock_free
+    (** In [Lock_free] mode the algorithm makes sure that at least one domain will
+    be able to make progress at the cost of performing read-only operations as
+    read-write operations. *)
+  | Obstruction_free
+    (** In [Obstruction_free] mode the algorithm proceeds optimistically and
+    allows read-only operations to fail due to interference from other domains
+    that might have been prevented in the [Lock_free] mode. *)
+(** Type of an operating mode of the [k-CAS-n-CMP] algorithm. *)
 
 (** {1 Individual locations}
 
@@ -179,7 +175,7 @@ module Loc : sig
   (** Type of shared memory locations. *)
   type !'a t
 
-  val make : ?padded:bool -> ?mode:Mode.t -> 'a -> 'a t
+  val make : ?padded:bool -> ?mode:mode -> 'a -> 'a t
   (** [make initial] creates a new shared memory location with the [initial]
       value.
 
@@ -190,8 +186,8 @@ module Loc : sig
       of using more memory.  It is not recommended to use [~padded:true] for
       short lived shared memory locations.
 
-      The optional {{!Mode.t} [mode]} argument defaults to [`Obstruction_free].
-      If explicitly specified as [`Lock_free], the location will always be
+      The optional {{!mode} [mode]} argument defaults to [Obstruction_free].
+      If explicitly specified as [Lock_free], the location will always be
       accessed using the lock-free operating mode.  This may improve performance
       in rare cases where a location is updated frequently and obstruction-free
       read-only accesses would almost certainly suffer from interference.
@@ -200,10 +196,10 @@ module Loc : sig
       transaction in allocation order from oldest to youngest is as fast as
       possible. *)
 
-  val make_contended : ?mode:Mode.t -> 'a -> 'a t
+  val make_contended : ?mode:mode -> 'a -> 'a t
   (** [make_contended initial] is equivalent to [make ~padded:true initial]. *)
 
-  val make_array : ?padded:bool -> ?mode:Mode.t -> int -> 'a -> 'a t array
+  val make_array : ?padded:bool -> ?mode:mode -> int -> 'a -> 'a t array
   (** [make_array n initial] creates an array of [n] new shared memory locations
       with the [initial] value.
 
@@ -211,12 +207,9 @@ module Loc : sig
       in the array inside a transaction in order from the highest index to the
       lowest index is as fast as possible. *)
 
-  val get_mode : 'a t -> Mode.t
+  val mode : 'a t -> mode
   (** [get_mode r] returns the operating mode of the shared memory location
       [r]. *)
-
-  val get_id : 'a t -> int
-  (** [get_id r] returns the unique id of the shared memory location [r]. *)
 
   val get : 'a t -> 'a
   (** [get r] reads the current value of the shared memory location [r]. *)
@@ -287,7 +280,7 @@ end
     done internally by the library implementation.  Only logically invisible
     writes to shared memory locations are performed during this phase.
 
-    3. In [`Obstruction_free] {{!Mode.t} mode} a third phase verifies all
+    3. In [Obstruction_free] {{!mode} mode} a third phase verifies all
     read-only operations.  This is also done internally by the library
     implementation.
 
@@ -531,14 +524,14 @@ module Xt : sig
   (** [call ~xt tx] is equivalent to [tx.Xt.tx ~xt]. *)
 
   val commit :
-    ?timeoutf:float -> ?backoff:Backoff.t -> ?mode:Mode.t -> 'a tx -> 'a
+    ?timeoutf:float -> ?backoff:Backoff.t -> ?mode:mode -> 'a tx -> 'a
   (** [commit tx] repeatedly calls [tx] to record a log of shared memory
       accesses and attempts to perform them atomically until it succeeds and
       then returns whatever [tx] returned.  [tx] may raise {!Retry.Later} or
       {!Retry.Invalid} to explicitly request a retry or any other exception to
       abort the transaction.
 
-      The default {{!Mode.t} [mode]} for [commit] is [`Obstruction_free].
+      The default {{!mode} [mode]} for [commit] is [Obstruction_free].
       However, after enough attempts have failed during the verification step,
-      [commit] switches to [`Lock_free]. *)
+      [commit] switches to [Lock_free]. *)
 end

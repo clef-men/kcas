@@ -3,13 +3,13 @@ open Kcas
 type t = { mutable cache : int Loc.t array; truth : int Loc.t array Loc.t }
 
 let make n =
-  let cs = Loc.make_array ~padded:true ~mode:`Lock_free 1 0 in
+  let cs = Loc.make_array ~padded:true ~mode:Lock_free 1 0 in
   Loc.set (Array.unsafe_get cs 0) n;
   let truth = Loc.make ~padded:true cs in
   Multicore_magic.copy_as_padded { cache = cs; truth }
 
 let[@inline never] rec get_self a i cs n =
-  let add_cs = Loc.make_array ~padded:true ~mode:`Lock_free (n + 1) 0 in
+  let add_cs = Loc.make_array ~padded:true ~mode:Lock_free (n + 1) 0 in
   let new_cs =
     (* The length of [new_cs] will be a power of two minus 1, which means the
        whole heap block will have a power of two number of words, which may help

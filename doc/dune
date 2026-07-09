@@ -1,8 +1,0 @@
-(mdx
- (package kcas_data)
- (deps
-  (package kcas)
-  (package kcas_data))
- (enabled_if
-  (>= %{ocaml_version} 5.0.0))
- (files gkmz-with-read-only-cmp-ops.md scheduler-interop.md))

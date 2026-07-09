@@ -1,8 +1,3 @@
-(*
- * Copyright (c) 2017, Nicolas ASSOUAD <nicolas.assouad@ens.fr>
- * Copyright (c) 2023, Vesa Karvonen <vesa.a.j.k@gmail.com>
- *)
-
 (** Work around CSE bug in OCaml 5-5.1. *)
 let[@inline] atomic_get x =
   Atomic.get ((* Prevents CSE *) Sys.opaque_identity x)

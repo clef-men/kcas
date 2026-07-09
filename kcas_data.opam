@@ -4,17 +4,9 @@ synopsis:
   "Compositional lock-free data structures and primitives for communication and synchronization"
 description:
   "A library of compositional lock-free data structures and primitives for communication and synchronization implemented using kcas."
-maintainer: [
-  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
-  "KC Sivaramakrishnan <kc@tarides.com>"
-]
-authors: [
-  "KC Sivaramakrishnan <kc@tarides.com>"
-  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
-]
+maintainer: ["Anonymous"]
+authors: ["Anonymous"]
 license: "ISC"
-homepage: "https://github.com/ocaml-multicore/kcas"
-bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
 depends: [
   "dune" {>= "3.14"}
   "kcas" {= version}
@@ -44,5 +36,3 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/ocaml-multicore/kcas.git"
-doc: "https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/"

@@ -1,31 +1,16 @@
-[API reference](https://ocaml-multicore.github.io/kcas/doc/) &middot;
-[Benchmarks](https://bench.ci.dev/ocaml-multicore/kcas/branch/main) &middot;
-[Stdlib Benchmarks](https://bench.ci.dev/ocaml-multicore/multicore-bench/branch/main)
-
-<div align="center">
-
-<a href="https://ocaml-multicore.github.io/kcas/">
-  <img
-    width="30%"
-    alt="Kcas logo"
-    src="https://raw.githubusercontent.com/ocaml-multicore/kcas/main/doc/kcas.svg">
-</a>
-
 # **Kcas** &mdash; Software Transactional Memory for OCaml
 
-</div>
-
-[**Kcas**](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/index.html)
+**Kcas**
 provides a
 [software transactional memory](https://en.wikipedia.org/wiki/Software_transactional_memory)
 (STM) implementation based on an atomic
 [lock-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Lock-freedom)
 multi-word [compare-and-set](https://en.wikipedia.org/wiki/Compare-and-swap)
 (MCAS) algorithm
-[enhanced with read-only compare operations](doc/gkmz-with-read-only-cmp-ops.md)
+enhanced with read-only compare operations
 and ability to block awaiting for changes.
 
-[**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html)
+**Kcas_data**
 provides compositional lock-free data structures and primitives for
 communication and synchronization implemented using **Kcas**.
 
@@ -52,18 +37,9 @@ Features and properties:
 - **_Composable_**: Independently developed transactions can be composed with
   ease sequentially, conjunctively, conditionally, and disjunctively.
 
-In other words,
-[performance](https://bench.ci.dev/ocaml-multicore/kcas/branch/main/benchmark/default)
-should be acceptable and scalable for many use cases, the non-blocking
+In other words, performance should be acceptable and scalable for many use cases, the non-blocking
 properties should allow use in many contexts including those where locks are not
 acceptable, and the features provided should support most practical needs.
-
-**Kcas** is [published on **opam**](https://opam.ocaml.org/packages/kcas/) and
-is distributed under the [ISC license](LICENSE.md).
-
-[![OCaml-CI Build Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fci.ocamllabs.io%2Fbadge%2Focaml-multicore%2Fkcas%2Fmain&logo=ocaml&style=flat-square)](https://ci.ocamllabs.io/github/ocaml-multicore/kcas)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/ocaml-multicore/kcas?style=flat-square&color=09aa89)](https://github.com/ocaml-multicore/kcas/releases/latest)
-[![docs](https://img.shields.io/badge/doc-online-blue.svg?style=flat-square)](https://ocaml-multicore.github.io/kcas/doc/)
 
 ## Contents
 
@@ -170,17 +146,17 @@ And now we have it:
 
 The API of **Kcas** is divided into submodules. The main modules are
 
-- [`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html),
+- `Loc`
   providing an abstraction of _shared memory locations_, and
 
-- [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html),
+- `Xt`
   providing _explicit transaction log passing_ over shared memory locations.
 
 The following sections discuss both of the above in turn.
 
 ### Creating and manipulating individual shared memory locations
 
-The [`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html)
+The `Loc`
 module is essentially compatible with the Stdlib
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html) module, except that a number of
 functions take some optional arguments that one usually need not worry about.
@@ -189,7 +165,7 @@ In other words, an application that uses
 [`Atomic`](https://v2.ocaml.org/api/Atomic.html), but then needs to perform
 atomic operations over multiple atomic locations, could theoretically just
 rebind `module Atomic = Loc` and then use the
-[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
+`Xt` API
 to perform operations over multiple locations. This should not be done
 just-in-case, however, as, even though **Kcas** is efficient, it does naturally
 have higher overhead than the Stdlib
@@ -197,13 +173,13 @@ have higher overhead than the Stdlib
 
 ### Programming with transactions
 
-The [`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html)
+The `Xt`
 module provides an API that allows _transactions_ over shared memory locations
 to be implemented as functions that explicitly pass a mutable transaction log,
 as the labeled argument `~xt`, through the computation to record accesses of
 shared memory locations. Once the transaction function returns, those accesses
 can then be attempted to be performed atomically. The
-[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
+`Xt` API
 is intended to be suitable for both designing and implementing new lock-free
 algorithms and as an application level programming interface for compositional
 use of such algorithms.
@@ -218,7 +194,7 @@ type 'a stack = 'a list Loc.t
 ```
 
 To create a stack we just
-[`make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+`make`
 a new location with an empty list:
 
 ```ocaml
@@ -227,7 +203,7 @@ val stack : unit -> 'a stack = <fun>
 ```
 
 To push an element to a stack we
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+`modify`
 the stack to cons the element onto the list:
 
 ```ocaml
@@ -238,14 +214,14 @@ val push : xt:'a Xt.t -> 'b list Loc.t -> 'b -> unit = <fun>
 
 Notice the `~xt` parameter. It refers to the transaction log being passed
 explicitly. Above we pass it to
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+`modify`
 to record an operation in the log rather than perform it immediately.
 
 Popping an element from a stack is a little more complicated as we need to
 handle the case of an empty stack. Let's go with a basic approach where we first
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+`get`
 the content of the stack, and
-[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+`set`
 it if necessary, and return an optional element.
 
 ```ocaml
@@ -259,9 +235,9 @@ val try_pop : xt:'a Xt.t -> 'b list Loc.t -> 'b option = <fun>
 ```
 
 Again, `try_pop` passes the `~xt` parameter explicitly to the
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+`get`
 and
-[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+`set`
 operations to record them in the log rather than perform them immediately.
 
 We could also implement `try_pop` more concisely with the help of a couple of
@@ -280,7 +256,7 @@ val tl_safe : 'a list -> 'a list = <fun>
 ```
 
 and
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update):
+`update`:
 
 ```ocaml
 # let try_pop ~xt stack =
@@ -290,15 +266,15 @@ val try_pop : xt:'a Xt.t -> 'b list Loc.t -> 'b option = <fun>
 
 If the stack already contained an empty list, `[]`, both of the above variations
 of `try_pop` generate a read-only CMP operation in the
-[`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+`obstruction_free`
 mode. This means that multiple domains may run `try_pop` on an empty stack in
 parallel without interference. The variation using
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update)
+`update`
 also makes only a single access to the underlying transaction log and is likely
 to be the faster variation.
 
 So, to use a stack, we first need to create it and then we may
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+`commit`
 transactions to `push` and `try_pop` elements:
 
 ```ocaml
@@ -316,7 +292,7 @@ val a_stack : int stack = Kcas.Loc.Loc {Kcas.Loc.state = <poly>; id = <poly>}
 ```
 
 The
-[`{ tx = ... }`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#type-tx)
+`{ tx = ... }`
 wrapper is used to ensure that the transaction function is polymorphic with
 respect to the log. This way the type system makes it difficult to accidentally
 leak the log as described in the paper
@@ -324,9 +300,9 @@ leak the log as described in the paper
 
 As an astute reader you may wonder why we wrote `push` and `try_pop` to take a
 transaction log as a parameter and then separately called
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+`commit`
 rather than just call
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+`commit`
 inside the `push` and `try_pop` functions and avoid exposing the `~xt`
 parameter. We'll get to that soon!
 
@@ -343,7 +319,7 @@ type 'a queue = {
 ```
 
 To create a queue we
-[`make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+`make`
 the two locations:
 
 ```ocaml
@@ -355,7 +331,7 @@ val queue : unit -> 'a queue = <fun>
 ```
 
 To enqueue we just
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+`modify`
 the back of the queue and `cons` the element to the list:
 
 ```ocaml
@@ -384,13 +360,13 @@ val try_dequeue : xt:'a Xt.t -> 'b queue -> 'b option = <fun>
 ```
 
 Above,
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update)
+`update`
 and
-[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
+`exchange`
 are used as convenient shorthands and to reduce the number of accesses to the
 transaction log. If both the front and back locations already contained an empty
 list, `[]`, the above generates read-only CMP operations in the
-[`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+`obstruction_free`
 mode allowing multiple domains to run `try_dequeue` on an empty queue in
 parallel without interference. Additionally, if the back contained only one
 element, no write to the front is generated.
@@ -399,9 +375,9 @@ element, no write to the front is generated.
 > a particular location?_
 >
 > First of all, the transaction must be attempted in the
-> [`obstruction_free`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#val-obstruction_free)
+> `obstruction_free`
 > mode, which is the default mode that
-> [`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+> `commit`
 > uses initially.
 >
 > Additionally, there must be no operation in the transaction that sets a new
@@ -416,7 +392,7 @@ element, no write to the front is generated.
 > overhead and also supporting convenient read-only updates.
 
 So, to use a queue, we first need to create it and then we may
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit)
+`commit`
 transactions to `enqueue` and `try_dequeue` elements:
 
 ```ocaml
@@ -447,7 +423,7 @@ val a_queue : int queue =
 #### Composing transactions
 
 The main feature of the
-[`Xt`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html) API
+`Xt` API
 is that transactions are composable. In fact, we already wrote transactions that
 recorded multiple primitive shared memory accesses to the explicitly passed
 transaction log. Nothing prevents us from writing transactions calling other
@@ -502,16 +478,16 @@ usually a _bad idea_ and should be avoided. It is usually better to block in
 such a way that the underlying domain can potentially perform other work.
 
 To support blocking **Kcas** provides a
-[`later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#val-later)
+`later`
 operation that amounts to raising a
-[`Later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#exception-Later)
+`Later`
 exception signaling that the operation, whether a single location operation or a
 multi location transaction, should be retried only after the shared memory
 locations examined by the operation have been modified outside of the
 transaction.
 
 Using
-[`later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#val-later)
+`later`
 we can easily write blocking pop
 
 ```ocaml
@@ -617,7 +593,7 @@ Exception: Failure "Domain_local_timeout.set_timeoutf not implemented".
 ```
 
 Oops! What happened above is that the
-[_domain local timeout_](https://github.com/ocaml-multicore/domain-local-timeout)
+_domain local timeout_
 mechanism used by **Kcas** was not implemented on the current domain. The idea
 is that, in the future, concurrent schedulers provide the mechanism out of the
 box, but there is also a default implementation using the Stdlib `Thread` and
@@ -634,7 +610,7 @@ This initialization, if needed, should be done by application code rather than
 by libraries.
 
 If we now retry the previous example we will get a
-[`Timeout`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Timeout/index.html#exception-Timeout)
+`Timeout`
 exception as expected:
 
 ```ocaml
@@ -644,12 +620,12 @@ Exception: Kcas.Timeout.Timeout.
 ```
 
 Besides
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit),
+`commit`,
 potentially blocking single location operations such as
-[`get_as`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-get_as),
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-update),
+`get_as`,
+`update`,
 and
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-modify)
+`modify`
 support the optional `timeoutf` argument.
 
 #### A transactional lock-free leftist heap
@@ -673,7 +649,7 @@ type 'v leftist =
 ```
 
 To create a leftist heap we
-[`make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+`make`
 a location with an empty spine:
 
 ```ocaml
@@ -772,7 +748,7 @@ val a_heap : int leftist Loc.t =
 
 To populate the heap we need to define a transaction passing function and pass
 it to
-[`commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-commit):
+`commit`:
 
 ```ocaml
 # let tx ~xt =
@@ -836,7 +812,7 @@ Instead programmers should be able to reuse carefully constructed data
 structures.
 
 One source of ready-made data structures is
-[**Kcas_data**](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/index.html).
+**Kcas_data**.
 Let's explore how we can leverage those data structures. Of course, first we
 need to `#require` the package and we'll also open it for convenience:
 
@@ -855,12 +831,12 @@ the description of the problem.
 
 A handy concurrent data structure for solving the dining philosophers problem is
 the
-[`Mvar`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html)
+`Mvar`
 or synchronizing variable. A `'a Mvar.t` is basically like a `'a option Loc.t`
 with blocking semantics for both
-[`take`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html#val-take)
+`take`
 and
-[`put`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Mvar/index.html#val-put).
+`put`.
 For the dining philosophers problem, we can use `Mvar`s to store the forks.
 
 The problem statement doesn't actually say when to stop. The gist of the
@@ -948,10 +924,10 @@ the cache overflows, the association whose node is at the other end of the list
 is removed.
 
 **Kcas_data** conveniently provides a
-[`Hashtbl`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html)
+`Hashtbl`
 module providing a hash table implementation that mimics the Stdlib
 [`Hashtbl`](https://v2.ocaml.org/api/Hashtbl.html) module and a
-[`Dllist`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Dllist/index.html)
+`Dllist`
 providing a doubly-linked list implementation. We'll also keep track of the
 space in the cache using a separate shared memory location so that it is
 possible to change the capacity of the cache dynamically:
@@ -978,7 +954,7 @@ val cache : ?hashed_type:'a Hashtbl.hashed_type -> int -> ('a, 'b) cache =
 
 Note that above we just passed the optional `hashed_type` argument to the hash
 table constructor. The hash table
-[`create`](https://ocaml-multicore.github.io/kcas/doc/kcas_data/Kcas_data/Hashtbl/index.html#val-create)
+`create`
 function takes some more optional arguments some of which might make sense to
 pass through.
 
@@ -1059,23 +1035,23 @@ k-CAS.
 
 It is possible to convert imperative sequential data structures to lock-free
 data structures [almost](#beware-of-torn-reads) just by using
-[shared memory locations](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/)
+shared memory locations
 and wrapping everything inside
-[transactions](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/), but
+transactions, but
 doing so will likely not lead to good performance.
 
 On the other hand, if you have a non-blocking data structure implemented using
 plain `Atomic`s, then simply replacing `Atomic` with
-[`Loc`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/) you should
+`Loc` you should
 get a data structure that works the same and will take somewhat more memory and
 operates somewhat more slowly. However, adding transactional operations simply
 by wrapping all accesses of a non-blocking data structure implementation will
 likely not lead to well performing transactional operations.
 
-[Shared memory locations](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/)
+Shared memory locations
 take more memory than ordinary mutable fields or mutable references and mutating
 operations on shared memory locations allocate. The
-[transaction mechanism](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/)
+transaction mechanism
 also allocates and adds lookup overhead to accesses. Updating multiple locations
 in a transaction is more expensive than updating individual locations
 atomically. Contention can cause transactions to retry and perform poorly.
@@ -1097,14 +1073,14 @@ can be advantageous to minimize the number of accesses.
 #### Prefer compound accesses
 
 For best performance it can be advantageous to use compound accesses such as
-[`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
-[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange),
+`update`,
+`exchange`,
 and
-[`modify`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-modify)
+`modify`
 instead of
-[`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+`get`
 and
-[`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set),
+`set`,
 because the compound accesses only consult the transaction log once.
 
 Consider the following example that swaps the values of the shared memory
@@ -1122,7 +1098,7 @@ locations `a` and `b`:
 ```
 
 The above performs four accesses. Using
-[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
+`exchange`
 we can reduce that to three:
 
 ```ocaml
@@ -1142,12 +1118,12 @@ The above will likely perform slightly better.
 >
 > It is simple. Basically all of the access operations perform only a single
 > access to the log. For simplicity, the documentation is written as if
-> [`get`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-get)
+> `get`
 > and
-> [`set`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-set)
+> `set`
 > were primitive, but all operations are actually implemented in terms of a more
 > general operation similar to
-> [`update`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-update),
+> `update`,
 > that only performs a single access to the transaction log.
 
 #### Log updates optimistically
@@ -1216,9 +1192,9 @@ perform rollbacks of changes made to locations, but it does offer low level
 support for nested conditional transactions.
 
 By explicitly calling
-[`snapshot`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-snapshot)
+`snapshot`
 and
-[`rollback`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-rollback)
+`rollback`
 one can scope tentative changes and create a composable version of `transfer`:
 
 ```ocaml
@@ -1241,7 +1217,7 @@ and d = Loc.make 27
 ```
 
 we can now attempt `transfer`s and perform the
-[`first`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-first)
+`first`
 of them that succeeds:
 
 ```ocaml
@@ -1319,7 +1295,7 @@ Closely related to moving compute outside of transactions, it is also sometimes
 possible or necessary to perform some side-effects or actions, such as
 non-transactional IO operations, only after a transaction has been committed
 successfully. These cases are supported via the ability to register
-[`post_commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-post_commit)
+`post_commit`
 actions.
 
 As a basic example, one might want to log a message when some transactional
@@ -1334,7 +1310,7 @@ val enqueue_and_log : xt:'a Xt.t -> string queue -> string -> unit = <fun>
 ```
 
 one should use
-[`post_commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-post_commit)
+`post_commit`
 
 ```ocaml
 # let enqueue_and_log ~xt queue message =
@@ -1430,7 +1406,7 @@ val enqueue : xt:'a Xt.t -> 'b queue -> 'b -> unit = <fun>
 ```
 
 The post commit action, registered using
-[`post_commit`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-post_commit),
+`post_commit`,
 checks that the tail is still the true tail and then attempts to update the
 tail. The order of accesses is very subtle as always with non-transactional
 atomic operations. Can you see why it works? Although we allow the tail to
@@ -1529,9 +1505,9 @@ mutate any shared memory locations.
 When a transaction is (unconditionally) _committed_, rather than merely
 _attempted_ (once), the commit mechanism keeps on retrying until an attempt
 succeeds or the transaction function raises an exception (other than
-[`Later`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Retry/index.html#exception-Later)
+`Later`
 or
-[`Interference`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Mode/index.html#exception-Interference))
+`Interference`)
 that the commit mechanism does not handle.
 
 Each attempt or retry calls the transaction function again. This means that any
@@ -1597,7 +1573,7 @@ val back_to_middle : 'a queue -> unit = <fun>
 ```
 
 Note that the above uses
-[`exchange`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-exchange)
+`exchange`
 to optimistically record shared memory accesses and then uses the `Exit`
 exception to abort the transaction in case the optimistic accesses turn out to
 be unnecessary or incorrect.
@@ -1632,7 +1608,7 @@ attention.
 First of all, notice that `dequeue` only calls `back_to_middle queue` after
 making sure that `queue.middle` and `queue.back` have not already been accessed
 using
-[`is_in_log`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-is_in_log).
+`is_in_log`.
 If the call `back_to_middle queue` would be made after accessing `queue.middle`
 or `queue.back`, then those accesses would be recorded in the transaction log
 `xt` and the log would be inconsistent after `back_to_middle queue` mutates the
@@ -1834,7 +1810,7 @@ Note again that while the rehash logic allows some slack in the capacity, a real
 implementation would likely use a bigger minimum capacity and perhaps avoid
 using powers of two. Also, if we have already modified the hash table, which we
 know by using
-[`is_in_log`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-is_in_log)
+`is_in_log`
 to check whether the `pending` location has been accessed, we must continue
 within the same transaction.
 
@@ -1982,7 +1958,7 @@ achieve without being expensive in itself as it tends to increase memory usage
 and the amount of initializing stores.
 
 The
-[`Loc.make`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Loc/index.html#val-make)
+`Loc.make`
 function takes an optional `padded` argument, which can be explicitly specified
 as `~padded:true` to request the location to be allocated in a way to avoid
 false sharing. Using `~padded:true` on long lived shared memory locations that
@@ -2029,11 +2005,11 @@ the queue for passing messages between domains.
 To avoid the above kind of problems, a strategic approach is to also allocate
 the queue record in a way to avoid false sharing. Unfortunately OCaml does not
 currently provide a standard way to do so. The
-[multicore-magic](https://github.com/ocaml-multicore/multicore-magic) library
+multicore-magic library
 provides a function
-[`copy_as_padded`](https://ocaml-multicore.github.io/multicore-magic/doc/multicore-magic/Multicore_magic/index.html#val-copy_as_padded)
+`copy_as_padded`
 for the purpose. Using
-[`copy_as_padded`](https://ocaml-multicore.github.io/multicore-magic/doc/multicore-magic/Multicore_magic/index.html#val-copy_as_padded)
+`copy_as_padded`
 one would write
 
 ```ocaml
@@ -2145,7 +2121,7 @@ transaction should always include an access of some shared memory location
 through the transaction log or should otherwise be guaranteed to be bounded.
 
 In addition to the automatic periodic validation, one can also explicitly
-[`validate`](https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/Xt/index.html#val-validate),
+`validate`,
 _after_ reading some locations, that the locations have not been modified
 outside of the transaction:
 
@@ -2168,11 +2144,3 @@ outside of the transaction:
 Notice that above we only validated the access of `a`, because we know that `a`
 and `b` are always updated atomically and we read `b` after reading `a`. In this
 case that is enough to ensure that read skew is not possible.
-
-## Additional resources
-
-- [Kcas: Building a Lock-Free STM for OCaml (1/2)](https://tarides.com/blog/2023-08-07-kcas-building-a-lock-free-stm-for-ocaml-1-2/)
-  [and (2/2)](https://tarides.com/blog/2023-08-10-kcas-building-a-lock-free-stm-for-ocaml-2-2/)
-- [Building a lock-free STM for OCaml](https://icfp23.sigplan.org/details/ocaml-2023-papers/6/Building-a-lock-free-STM-for-OCaml),
-  see [video](https://www.youtube.com/watch?v=Mt8wPCHU1ZU) and
-  [slides](https://polytypic.github.io/kcas-talk/).

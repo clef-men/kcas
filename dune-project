@@ -6,18 +6,9 @@
 
 (implicit_transitive_deps false)
 
-(authors
- "KC Sivaramakrishnan <kc@tarides.com>"
- "Vesa Karvonen <vesa.a.j.k@gmail.com>")
+(authors "Anonymous")
 
-(maintainers
- "Vesa Karvonen <vesa.a.j.k@gmail.com>"
- "KC Sivaramakrishnan <kc@tarides.com>")
-
-(source
- (github ocaml-multicore/kcas))
-
-(homepage "https://github.com/ocaml-multicore/kcas")
+(maintainers "Anonymous")
 
 (license ISC)
 

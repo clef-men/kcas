@@ -4,17 +4,9 @@ synopsis:
   "Software transactional memory based on lock-free multi-word compare-and-set"
 description:
   "A software transactional memory (STM) implementation based on an atomic lock-free multi-word compare-and-set (MCAS) algorithm enhanced with read-only compare operations and ability to block awaiting for changes."
-maintainer: [
-  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
-  "KC Sivaramakrishnan <kc@tarides.com>"
-]
-authors: [
-  "KC Sivaramakrishnan <kc@tarides.com>"
-  "Vesa Karvonen <vesa.a.j.k@gmail.com>"
-]
+maintainer: ["Anonymous"]
+authors: ["Anonymous"]
 license: "ISC"
-homepage: "https://github.com/ocaml-multicore/kcas"
-bug-reports: "https://github.com/ocaml-multicore/kcas/issues"
 depends: [
   "dune" {>= "3.14"}
   "ocaml" {>= "4.13.0"}
@@ -44,5 +36,3 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/ocaml-multicore/kcas.git"
-doc: "https://ocaml-multicore.github.io/kcas/doc/kcas/Kcas/"
